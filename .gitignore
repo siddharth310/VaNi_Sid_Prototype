@@ -1,0 +1,6 @@
+.env
+*.exe
+Docker Desktop Installer.exe
+node_modules/
+dist/
+build/

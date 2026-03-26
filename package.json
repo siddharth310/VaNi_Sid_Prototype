@@ -1,0 +1,21 @@
+{
+  "name": "vhos",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "build": "corepack pnpm -r run build",
+    "dev": "corepack pnpm run build:shared && corepack pnpm --parallel --filter @vhos/api --filter @vhos/web dev",
+    "build:shared": "corepack pnpm --filter @vhos/shared run build",
+    "lint": "corepack pnpm -r run lint",
+    "typecheck": "corepack pnpm -r run lint",
+    "db:up": "docker compose up -d postgres redis",
+    "db:migrate": "corepack pnpm --filter @vhos/api exec prisma migrate dev",
+    "db:deploy": "corepack pnpm --filter @vhos/api exec prisma migrate deploy",
+    "db:seed": "corepack pnpm --filter @vhos/api exec prisma db seed",
+    "db:generate": "corepack pnpm --filter @vhos/api exec prisma generate",
+    "db:reset": "corepack pnpm run db:deploy && corepack pnpm run db:seed"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

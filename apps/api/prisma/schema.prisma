@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Agent {
+  id                String    @id @default(cuid())
+  name              String
+  category          String
+  icon              String    @default("🤖")
+  color             String    @default("#00D4AA")
+  voiceId           String    @default("alloy")
+  isBuiltIn         Boolean   @default(false)
+  version           String    @default("1.0")
+  environment       String    @default("Testing")
+  specJson          Json
+  systemPromptCache String?
+  guardrailsJson    Json
+  publishedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  sessions          Session[]
+
+  @@map("agents")
+}
+
+model Session {
+  id                String    @id @default(cuid())
+  agentId           String
+  agent             Agent     @relation(fields: [agentId], references: [id])
+  patientUhidHash   String?
+  isVerified        Boolean   @default(false)
+  mode              String
+  status            String
+  language          String    @default("en")
+  emotionState      String?
+  discoveryPhase    Boolean   @default(true)
+  discoveryTurns    Int       @default(0)
+  startedAt         DateTime  @default(now())
+  endedAt           DateTime?
+  durationSecs      Int?
+  realtimeSessionId String?
+  turns             Turn[]
+  escalations       Escalation[]
+  auditEvents       AuditEvent[]
+
+  @@map("sessions")
+}
+
+model Turn {
+  id                  String   @id @default(cuid())
+  sessionId           String
+  session             Session  @relation(fields: [sessionId], references: [id])
+  role                String
+  content             String
+  language            String   @default("en")
+  emotionDetected     String?
+  isBargeIn           Boolean  @default(false)
+  guardrailHit        Boolean  @default(false)
+  guardrailDetail     Json?
+  firstAidInjected    Boolean  @default(false)
+  escalationTriggered Boolean  @default(false)
+  realtimeEventId     String?
+  llmLatencyMs        Int?
+  totalLatencyMs      Int?
+  createdAt           DateTime @default(now())
+
+  @@map("turns")
+}
+
+model Escalation {
+  id          String    @id @default(cuid())
+  sessionId   String
+  session     Session   @relation(fields: [sessionId], references: [id])
+  reason      String
+  severity    String
+  handledBy   String?
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@map("escalations")
+}
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  sessionId   String
+  session     Session   @relation(fields: [sessionId], references: [id])
+  eventType   String
+  detail      Json
+  createdAt   DateTime @default(now())
+
+  @@map("audit_events")
+}
+
+model ScheduledSession {
+  id              String    @id @default(cuid())
+  agentId         String
+  patientUhidHash String
+  triggerType     String
+  scheduledFor    DateTime
+  status          String
+  sessionId       String?
+  createdAt       DateTime  @default(now())
+
+  @@map("scheduled_sessions")
+}
