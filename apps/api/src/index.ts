@@ -29,7 +29,7 @@ async function main(): Promise<void> {
 
   app.get('/health', async () => ({ status: 'ok' }));
 
-  await registerAgentRoutes(app);
+  await registerAgentRoutes(app, { cfg });
   await registerStudioRoutes(app, { cfg });
   await registerSessionRoutes(app, { cfg, redis });
   await registerVoiceRoutes(app, { cfg, redis, bus });
