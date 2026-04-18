@@ -28,7 +28,8 @@ services:
       DATABASE_URL: postgresql://vhos:vhos@postgres:5432/vhos
       REDIS_URL: redis://redis:6379
       FRONTEND_URL: http://localhost:5173
-      AGENT_CREATE_WEBHOOK_URL: http://host.docker.internal:8100/v1/agents/create
+      AGENT_CATALOG_REFRESH_URL: http://host.docker.internal:8100/v1/agents/catalog/refresh
+      ORCHESTRATION_BASE_URL: http://host.docker.internal:8100
     depends_on:
       - postgres
       - redis

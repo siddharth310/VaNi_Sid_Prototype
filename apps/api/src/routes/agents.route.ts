@@ -46,135 +46,15 @@ function serializeAgent(agent: PersistedAgent): Record<string, unknown> {
   };
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return {};
-}
-
-function asNonEmptyString(value: unknown, fallback = ''): string {
-  return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
-}
-
-function asBoolean(value: unknown, fallback = false): boolean {
-  return typeof value === 'boolean' ? value : fallback;
-}
-
-function asNumber(value: unknown, fallback = 0): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
-function asStringArray(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
-  }
-  if (typeof value === 'string') {
-    return value
-      .split(/\r?\n|,/)
-      .map((v) => v.trim())
-      .filter((v) => v.length > 0);
-  }
-  return [];
-}
-
-function slugify(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return slug || 'agent';
-}
-
-function normalizeSpecForWebhook(spec: Record<string, unknown>): Record<string, unknown> {
-  const goal = asRecord(spec.goal);
-  const operations = asRecord(spec.operations);
-  const contextAccess = asRecord(spec.contextAccess);
-  const llm = asRecord(spec.llm);
-
-  return {
-    personaName: asNonEmptyString(spec.personaName, asNonEmptyString(spec.name, 'Unknown Persona')),
-    tone: asNonEmptyString(spec.tone, asNonEmptyString(spec.tonePreset, 'Warm & caring')),
-    empathyLevel: asNumber(spec.empathyLevel, 3),
-    languages: asStringArray(spec.languages),
-    domain: asNonEmptyString(spec.domain, 'General'),
-    goal: {
-      primary: asNonEmptyString(goal.primary, asNonEmptyString(spec.purpose, '')),
-      successCondition: asNonEmptyString(goal.successCondition, ''),
-      escalationTrigger: asStringArray(goal.escalationTrigger),
-    },
-    llm: {
-      model: asNonEmptyString(spec.llmModel, asNonEmptyString(llm.model, 'gpt-4o')),
-      temperature: asNumber(llm.temperature, 0.7),
-      maxSteps: asNumber(llm.maxSteps, 20),
-    },
-    tools: asStringArray(spec.tools),
-    guardrails: Array.isArray(spec.guardrails) ? spec.guardrails : [],
-    operations: {
-      channels: {
-        chat: asBoolean(operations.channelChat, true),
-        voice: asBoolean(operations.channelVoice, true),
-        phone: asBoolean(operations.channelPhone, false),
-      },
-      humanInLoop: asBoolean(spec.humanInLoop, false),
-      escalationTeam: asNonEmptyString(operations.escalationTeam, ''),
-      sessionTimeoutMins: asNumber(operations.sessionTimeoutMins, 15),
-    },
-    conversation: {
-      openingLine: asNonEmptyString(spec.openingLine, ''),
-      closingLine: asNonEmptyString(spec.closingLine, ''),
-      fallback: asNonEmptyString(spec.fallbackUtterance, ''),
-      ambiguityPrompt: asNonEmptyString(spec.ambiguityPrompt, ''),
-      responseLength: asNonEmptyString(spec.responseLength, 'short').toLowerCase(),
-      discoveryDepth: asNumber(spec.discoveryDepth, 1),
-    },
-    contextAccess,
-  };
-}
-
-function buildAgentCreateWebhookPayload(agent: PersistedAgent): Record<string, unknown> {
-  const spec = asRecord(agent.specJson);
-  const normalizedSpec = normalizeSpecForWebhook(spec);
-  const description = asNonEmptyString(spec.problemStatement, asNonEmptyString(spec.purpose, ''));
-
-  return {
-    agent: {
-      id: agent.id,
-      name: agent.name,
-      category: agent.category,
-      slug: slugify(agent.name),
-      description,
-    },
-    spec: normalizedSpec,
-    ui: {
-      icon: agent.icon,
-      color: agent.color,
-      voiceId: agent.voiceId,
-    },
-    lifecycle: {
-      isBuiltIn: agent.isBuiltIn,
-      version: agent.version,
-      environment: agent.environment,
-      publishedAt: agent.publishedAt?.toISOString() ?? null,
-      createdAt: agent.createdAt.toISOString(),
-      updatedAt: agent.updatedAt.toISOString(),
-    },
-  };
-}
-
-async function notifyAgentCreated(cfg: AppConfig, agent: PersistedAgent): Promise<void> {
-  const response = await fetch(cfg.AGENT_CREATE_WEBHOOK_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(buildAgentCreateWebhookPayload(agent)),
+async function notifyAgentCatalogRefresh(cfg: AppConfig): Promise<void> {
+  const response = await fetch(cfg.AGENT_CATALOG_REFRESH_URL, {
+    method: 'POST'
   });
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
     const detail = errorBody ? `: ${errorBody}` : '';
-    throw new Error(`Agent create webhook failed with status ${response.status}${detail}`);
+    throw new Error(`Agent catalog refresh webhook failed with status ${response.status}${detail}`);
   }
 }
 
@@ -232,10 +112,10 @@ export async function registerAgentRoutes(
     });
 
     try {
-      await notifyAgentCreated(cfg, agent);
+      await notifyAgentCatalogRefresh(cfg);
     } catch (error) {
       await prisma.agent.delete({ where: { id: agent.id } });
-      req.log.error({ err: error, agentId: agent.id }, 'Failed to notify agent create webhook');
+      req.log.error({ err: error, agentId: agent.id }, 'Failed to notify agent catalog refresh webhook');
       return reply.status(502).send({ error: 'Failed to sync created agent' });
     }
 
@@ -384,6 +264,13 @@ export async function registerAgentRoutes(
       return reply.status(403).send({ error: 'Built-in agents cannot be deleted' });
     }
     await deleteAgentAndRelatedData(req.params.id);
+
+    try {
+      await notifyAgentCatalogRefresh(cfg);
+    } catch (error) {
+      req.log.error({ err: error, agentId: req.params.id }, 'Failed to notify agent catalog refresh webhook');
+    }
+
     return reply.status(204).send();
   });
 
@@ -408,6 +295,30 @@ export async function registerAgentRoutes(
       const spec = agentSpecSchema.parse(agent.specJson) as AgentSpec;
       const prompt = buildSystemPrompt(spec, null, {});
       return { prompt };
+    }
+  );
+
+  app.post<{ Body: { message: string; model: string; max_rounds: number } }>(
+    '/api/agents/auto',
+    async (req, reply) => {
+      try {
+        const response = await fetch(`${cfg.ORCHESTRATION_BASE_URL}/v1/agents/auto`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(req.body),
+        });
+
+        if (!response.ok) {
+          const text = await response.text().catch(() => '');
+          return reply.status(response.status).send({ error: text || 'Orchestration layer error' });
+        }
+
+        const data = await response.json();
+        return reply.send(data);
+      } catch (error) {
+        req.log.error({ err: error }, 'Failed to reach orchestration layer');
+        return reply.status(502).send({ error: 'Failed to reach orchestration layer' });
+      }
     }
   );
 }

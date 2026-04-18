@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PublishedAgentCard } from '../components/agents/PublishedAgentCard.js';
+import { AutoAgentChat } from '../components/AutoAgentChat.js';
 import { getApiBase } from '../lib/api.js';
 
 interface AgentRow {
@@ -206,6 +207,8 @@ export function Home(): JSX.Element {
           </ul>
         )}
       </section>
+
+      <AutoAgentChat />
     </div>
   );
 }

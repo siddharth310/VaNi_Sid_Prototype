@@ -4,7 +4,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3001),
   FRONTEND_URL: z.string().url().default('http://localhost:5173'),
-  AGENT_CREATE_WEBHOOK_URL: z.string().url().default('http://localhost:8100/v1/agents/create'),
+  AGENT_CATALOG_REFRESH_URL: z.string().url().default('http://localhost:8100/v1/agents/catalog/refresh'),
+  ORCHESTRATION_BASE_URL: z.string().url().default('http://localhost:8100'),
   PUBLIC_WS_HOST: z
     .string()
     .optional()
