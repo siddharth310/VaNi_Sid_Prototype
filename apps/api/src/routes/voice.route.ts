@@ -1,5 +1,5 @@
 import { PassThrough } from 'node:stream';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Redis } from 'ioredis';
 import type { AgentSpec } from '@vhos/shared';
 import type { AppConfig } from '../config.js';
@@ -17,6 +17,35 @@ function voiceDraftRedisKey(sessionId: string): string {
 }
 
 const DRAFT_TTL_SEC = 30 * 60;
+
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value?.split(',')[0]?.trim();
+}
+
+function resolveVoiceWebSocketUrl(
+  req: FastifyRequest,
+  cfg: AppConfig,
+  sessionId: string
+): string {
+  const host =
+    cfg.PUBLIC_WS_HOST ??
+    firstHeaderValue(req.headers['x-forwarded-host']) ??
+    req.headers.host ??
+    `localhost:${cfg.PORT}`;
+  const forwardedProto = firstHeaderValue(req.headers['x-forwarded-proto']);
+  const protocol = forwardedProto === 'https' || forwardedProto === 'wss'
+    ? 'wss'
+    : forwardedProto === 'http' || forwardedProto === 'ws'
+      ? 'ws'
+      : cfg.NODE_ENV === 'production'
+        ? 'wss'
+        : 'ws';
+
+  return `${protocol}://${host}/api/voice/session/${sessionId}`;
+}
 
 export async function registerVoiceRoutes(
   app: FastifyInstance,
@@ -58,9 +87,7 @@ export async function registerVoiceRoutes(
         'EX',
         86_400
       );
-      const host = cfg.PUBLIC_WS_HOST ?? `localhost:${cfg.PORT}`;
-      const protocol = cfg.NODE_ENV === 'production' ? 'wss' : 'ws';
-      const wsUrl = `${protocol}://${host}/api/voice/session/${session.id}`;
+      const wsUrl = resolveVoiceWebSocketUrl(req, cfg, session.id);
       return { sessionId: session.id, wsUrl };
     }
 
@@ -91,10 +118,7 @@ export async function registerVoiceRoutes(
       'EX',
       86_400
     );
-
-    const host = cfg.PUBLIC_WS_HOST ?? `localhost:${cfg.PORT}`;
-    const protocol = cfg.NODE_ENV === 'production' ? 'wss' : 'ws';
-    const wsUrl = `${protocol}://${host}/api/voice/session/${session.id}`;
+    const wsUrl = resolveVoiceWebSocketUrl(req, cfg, session.id);
 
     return {
       sessionId: session.id,

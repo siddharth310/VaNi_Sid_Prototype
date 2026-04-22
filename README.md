@@ -68,13 +68,45 @@ Voice backends are selected only via the API process environment (never in the b
 
 Restart the API after changing `VOICE_PROVIDER`. The frontend talks only to `/api/voice/...`; it does not depend on which provider is active.
 
-## Docker Compose (all services)
+## Docker Compose (development only)
 
 ```bash
 docker compose up
 ```
 
 This starts Postgres, Redis, API, and Web with code mounted from the repo. Ensure `.env` exists and `PATIENT_HASH_SECRET` is set.
+
+## Production containers
+
+The checked-in `docker-compose.yml` is a local development workflow. It runs Vite dev mode, mounts the repo into containers, and installs dependencies at startup. That is not suitable for AWS deployment.
+
+For production builds, use the dedicated Dockerfiles:
+
+```bash
+docker build -f apps/api/Dockerfile -t vhos-api .
+docker build -f apps/web/Dockerfile -t vhos-web .
+```
+
+Or run the production compose file locally as a smoke test:
+
+```bash
+docker compose -f docker-compose.prod.yml up --build
+```
+
+Production behavior:
+
+- `apps/web/Dockerfile` builds static assets and serves them from Nginx.
+- Nginx proxies `/api/*` to the API container, so the browser no longer needs a hardcoded localhost API URL.
+- `apps/api/src/routes/voice.route.ts` now derives the public WebSocket host from forwarded headers when `PUBLIC_WS_HOST` is unset, which is required behind AWS ALB, Nginx, or ECS service discovery.
+
+Recommended AWS shape:
+
+- Run `web` and `api` as separate ECS services or separate containers in one task.
+- Use RDS for PostgreSQL and ElastiCache for Redis instead of the compose-managed containers.
+- Set `PUBLIC_APP_URL` to the public HTTPS URL of the web app when using `docker-compose.prod.yml`.
+- Set `EXTERNAL_DATABASE_URL` and `EXTERNAL_REDIS_URL` when pointing the API at RDS and ElastiCache.
+- If your ingress does not forward `Host` or `X-Forwarded-*` headers correctly, set `PUBLIC_WS_HOST` explicitly to the public host name.
+- Run `pnpm --filter @vhos/api exec prisma migrate deploy` as a release step before shifting traffic.
 
 ## Project layout
 

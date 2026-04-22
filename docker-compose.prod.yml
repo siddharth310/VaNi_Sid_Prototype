@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vhos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vhos}
+      POSTGRES_DB: ${POSTGRES_DB:-vhos}
+    ports:
+      - '5432:5432'
+    volumes:
+      - vhos_pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: ${EXTERNAL_DATABASE_URL:-postgresql://${POSTGRES_USER:-vhos}:${POSTGRES_PASSWORD:-vhos}@postgres:5432/${POSTGRES_DB:-vhos}}
+      REDIS_URL: ${EXTERNAL_REDIS_URL:-redis://redis:6379}
+      FRONTEND_URL: ${PUBLIC_APP_URL:-http://localhost:8080}
+      AGENT_CATALOG_REFRESH_URL: ${AGENT_CATALOG_REFRESH_URL:-http://orchestrator:8100/v1/agents/catalog/refresh}
+      ORCHESTRATION_BASE_URL: ${ORCHESTRATION_BASE_URL:-http://orchestrator:8100}
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - '3001:3001'
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '8080:80'
+
+volumes:
+  vhos_pgdata:

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { Prisma } from '@prisma/client';
 import type { AgentSpec } from '@vhos/shared';
 import type { AppConfig } from '../config.js';
 import { prisma } from '../lib/prisma.js';
@@ -59,7 +60,7 @@ async function notifyAgentCatalogRefresh(cfg: AppConfig): Promise<void> {
 }
 
 async function deleteAgentAndRelatedData(agentId: string): Promise<void> {
-  await prisma.$transaction(async (tx: typeof prisma) => {
+  await prisma.$transaction(async (tx) => {
     const sessions = await tx.session.findMany({
       where: { agentId },
       select: { id: true },
@@ -193,8 +194,10 @@ export async function registerAgentRoutes(
           : {};
       const gr = specObj.guardrails;
       const guardrailsJson = Array.isArray(gr)
-        ? (gr as object[])
-        : existing.guardrailsJson;
+        ? (gr as Prisma.InputJsonValue)
+        : existing.guardrailsJson === null
+          ? Prisma.JsonNull
+          : (existing.guardrailsJson as Prisma.InputJsonValue);
       await prisma.agent.update({
         where: { id: req.params.id },
         data: {

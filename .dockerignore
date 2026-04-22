@@ -1,0 +1,12 @@
+.git
+.cursor
+.pnpm-store
+node_modules
+apps/*/node_modules
+packages/*/node_modules
+apps/*/dist
+packages/*/dist
+npm-debug.log*
+pnpm-debug.log*
+Dockerfile*
+docker-compose*.yml
