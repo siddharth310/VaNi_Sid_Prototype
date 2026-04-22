@@ -114,9 +114,7 @@ export async function registerAgentRoutes(
     try {
       await notifyAgentCatalogRefresh(cfg);
     } catch (error) {
-      await prisma.agent.delete({ where: { id: agent.id } });
       req.log.error({ err: error, agentId: agent.id }, 'Failed to notify agent catalog refresh webhook');
-      return reply.status(502).send({ error: 'Failed to sync created agent' });
     }
 
     return reply.status(201).send({ id: agent.id });
