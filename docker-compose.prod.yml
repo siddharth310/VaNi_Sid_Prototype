@@ -29,14 +29,14 @@ services:
       PORT: 3001
       DATABASE_URL: ${EXTERNAL_DATABASE_URL:-postgresql://${POSTGRES_USER:-vhos}:${POSTGRES_PASSWORD:-vhos}@postgres:5432/${POSTGRES_DB:-vhos}}
       REDIS_URL: ${EXTERNAL_REDIS_URL:-redis://redis:6379}
-      FRONTEND_URL: ${PUBLIC_APP_URL:-http://localhost:8080}
+      FRONTEND_URL: ${PUBLIC_APP_URL:-http://localhost:8081}
       AGENT_CATALOG_REFRESH_URL: ${AGENT_CATALOG_REFRESH_URL:-http://orchestrator:8100/v1/agents/catalog/refresh}
       ORCHESTRATION_BASE_URL: ${ORCHESTRATION_BASE_URL:-http://orchestrator:8100}
     depends_on:
       - postgres
       - redis
-    ports:
-      - '3001:3001'
+    expose:
+      - '3001'
 
   web:
     build:
@@ -46,7 +46,7 @@ services:
     depends_on:
       - api
     ports:
-      - '8080:80'
+      - '${PUBLIC_WEB_PORT:-8081}:80'
 
 volumes:
   vhos_pgdata:

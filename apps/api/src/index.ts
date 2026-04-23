@@ -13,6 +13,7 @@ import { createRedisClient } from './lib/redis.js';
 import { registerAgentRoutes } from './routes/agents.route.js';
 import { registerSessionRoutes } from './routes/sessions.route.js';
 import { registerStudioRoutes } from './routes/studio.route.js';
+import { registerTtsRoutes } from './routes/tts.route.js';
 import { registerVoiceRoutes } from './routes/voice.route.js';
 import { VoiceEventBus } from './runtime/voice/voice-event-bus.js';
 
@@ -32,6 +33,7 @@ async function main(): Promise<void> {
   await registerAgentRoutes(app, { cfg });
   await registerStudioRoutes(app, { cfg });
   await registerSessionRoutes(app, { cfg, redis });
+  await registerTtsRoutes(app, { cfg });
   await registerVoiceRoutes(app, { cfg, redis, bus });
 
   await app.listen({ port: cfg.PORT, host: '0.0.0.0' });

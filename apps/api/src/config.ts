@@ -21,6 +21,8 @@ const envSchema = z.object({
   ELEVENLABS_API_KEY: z.string().optional().default(''),
   ELEVENLABS_DEFAULT_AGENT_ID: z.string().optional().default(''),
   ELEVENLABS_DEFAULT_VOICE_ID: z.string().optional().default(''),
+  ELEVENLABS_TTS_MODEL: z.string().default('eleven_multilingual_v2'),
+  ELEVENLABS_STT_MODEL: z.string().default('scribe_v1'),
   PATIENT_HASH_SECRET: z.string().min(32, 'PATIENT_HASH_SECRET must be at least 32 characters'),
   OTP_EXPIRY_SECONDS: z.coerce.number().int().positive().default(120),
   MAX_AUTH_ATTEMPTS: z.coerce.number().int().positive().default(3),

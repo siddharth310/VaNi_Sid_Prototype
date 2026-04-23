@@ -1,11 +1,18 @@
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getApiBase } from '../lib/api.js';
+import { useVoiceAssistant } from '../hooks/useVoiceAssistant.js';
+import { getApiBase, getAutoAgentEndpoint } from '../lib/api.js';
+import { VoiceButton } from './VoiceButton.js';
 
 type Message = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+};
+
+type Toast = {
+  id: number;
+  message: string;
 };
 
 // SVG Icons
@@ -27,6 +34,30 @@ const SendIcon = () => (
   </svg>
 );
 
+const LANGUAGE_OPTIONS = [
+  { value: 'en-US', label: 'English (US)' },
+  { value: 'en-IN', label: 'English (IN)' },
+  { value: 'hi-IN', label: 'Hindi (IN)' },
+] as const;
+
+const REQUEST_TIMEOUT_MS = 20_000;
+
+async function readAgentReply(response: Response): Promise<string> {
+  const data = (await response.json()) as {
+    final_response?: string;
+    response?: string;
+    message?: string;
+    error?: string;
+  };
+  return (
+    data.final_response ??
+    data.response ??
+    data.message ??
+    data.error ??
+    'No response returned from the agent.'
+  );
+}
+
 export function AutoAgentChat(): JSX.Element {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -34,8 +65,22 @@ export function AutoAgentChat(): JSX.Element {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const toastTimerRef = useRef<number | null>(null);
   const base = getApiBase();
+  const endpoint = getAutoAgentEndpoint();
+
+  const showToast = (message: string) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    const nextToast = { id: Date.now(), message };
+    setToast(nextToast);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast((current) => (current?.id === nextToast.id ? null : current));
+    }, 4000);
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -47,17 +92,37 @@ export function AutoAgentChat(): JSX.Element {
     }
   }, [messages, isOpen]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
-    const userMessage = input.trim();
+  const submitMessage = async (
+    rawMessage: string,
+    options?: { force?: boolean }
+  ): Promise<string> => {
+    const userMessage = rawMessage.trim();
+    if (!userMessage || (isLoading && !options?.force)) {
+      return '';
+    }
+
     setInput('');
-    const userMsgObj: Message = { id: Date.now().toString(), role: 'user', content: userMessage };
-    setMessages(prev => [...prev, userMsgObj]);
+    setMessages((prev) => [
+      ...prev,
+      { id: `${Date.now()}-user`, role: 'user', content: userMessage },
+    ]);
     setIsLoading(true);
 
+    console.log("Submitting message to Auto Agent API:", { userMessage, endpoint });
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
     try {
-      const response = await fetch(`${base}/api/agents/auto`, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -66,28 +131,66 @@ export function AutoAgentChat(): JSX.Element {
           message: userMessage,
           model: 'llama3.2',
           max_rounds: 4
-        })
+        }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
+        const errorText = await readAgentReply(response);
+        throw new Error(errorText || `Server returned ${response.status}`);
       }
 
-      const data = await response.json();
-      const finalRes = data.final_response || 'No response returned from the agent.';
+      const finalRes = await readAgentReply(response);
 
-      setMessages(prev => [
+      setMessages((prev) => [
         ...prev,
-        { id: (Date.now() + 1).toString(), role: 'assistant', content: finalRes }
+        { id: `${Date.now()}-assistant`, role: 'assistant', content: finalRes }
       ]);
-    } catch (err) {
-      console.error(err);
-      setMessages(prev => [
+
+      return finalRes;
+    } catch (error) {
+      const errorMessage =
+        error instanceof DOMException && error.name === 'AbortError'
+          ? 'The agent took too long to respond. Please try again.'
+          : error instanceof Error
+            ? error.message
+            : 'Error connecting to the Auto Agent API.';
+
+      setMessages((prev) => [
         ...prev,
-        { id: (Date.now() + 1).toString(), role: 'assistant', content: 'Error connecting to the Auto Agent API. Please make sure the service is running on port 8100.' }
+        { id: `${Date.now()}-assistant`, role: 'assistant', content: errorMessage }
       ]);
+      showToast(errorMessage);
+      throw new Error(errorMessage);
     } finally {
+      window.clearTimeout(timeoutId);
       setIsLoading(false);
+    }
+  };
+
+  const voice = useVoiceAssistant({
+    baseUrl: base,
+    submitMessage,
+    onTranscript: (text) => {
+      setInput(text);
+      if (!isOpen) {
+        setIsOpen(true);
+      }
+    },
+    onError: (message) => {
+      showToast(message);
+    },
+  });
+
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) {
+      return;
+    }
+
+    try {
+      await submitMessage(input);
+    } catch {
+      // Errors are surfaced in chat and toast already.
     }
   };
 
@@ -99,6 +202,19 @@ export function AutoAgentChat(): JSX.Element {
 
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key={toast.id}
+            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+            className="mb-3 max-w-[320px] rounded-2xl border border-rose-200 bg-white/95 px-4 py-3 text-sm text-slate-700 shadow-xl backdrop-blur"
+          >
+            {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -137,8 +253,8 @@ export function AutoAgentChat(): JSX.Element {
                 >
                   <div
                     className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${m.role === 'user'
-                        ? 'bg-gradient-to-br from-teal-500 to-cyan-600 text-white rounded-br-sm'
-                        : 'bg-white border border-slate-100 text-slate-700 rounded-bl-sm'
+                      ? 'bg-gradient-to-br from-teal-500 to-cyan-600 text-white rounded-br-sm'
+                      : 'bg-white border border-slate-100 text-slate-700 rounded-bl-sm'
                       }`}
                   >
                     {m.content}
@@ -154,24 +270,80 @@ export function AutoAgentChat(): JSX.Element {
                   </div>
                 </div>
               )}
+              {voice.status === 'listening' && (
+                <div className="flex justify-start">
+                  <div className="max-w-[85%] rounded-2xl rounded-bl-sm border border-cyan-100 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <span className="voice-bars" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                      </span>
+                      <div>
+                        <p className="font-medium text-slate-700">Listening…</p>
+                        <p className="text-xs text-slate-400">
+                          {voice.interimTranscript || 'Start speaking naturally.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 
             {/* Input */}
             <div className="border-t border-slate-100 bg-white p-4">
-              <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1.5 pl-4 shadow-inner transition-colors focus-within:border-teal-300 focus-within:bg-white">
+              <div className="mb-2 flex items-center justify-between px-1 text-xs text-slate-400">
+                <span>
+                  {voice.status === 'speaking'
+                    ? 'Speaking reply'
+                    : voice.status === 'processing'
+                      ? 'Processing voice request'
+                      : voice.status === 'listening'
+                        ? 'Listening'
+                        : 'Voice ready'}
+                </span>
+                <label className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-500">
+                  <span>Language</span>
+                  <select
+                    value={voice.language}
+                    onChange={(event) => voice.setLanguage(event.target.value as (typeof LANGUAGE_OPTIONS)[number]['value'])}
+                    className="bg-transparent text-xs font-medium text-slate-600 outline-none"
+                    disabled={voice.status === 'listening' || voice.status === 'processing'}
+                  >
+                    {LANGUAGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="flex items-center gap-2 rounded-[24px] border border-slate-200 bg-slate-50 p-1.5 pl-4 shadow-inner transition-colors focus-within:border-teal-300 focus-within:bg-white">
                 <input
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  disabled={isLoading}
-                  placeholder="Ask something..."
+                  disabled={isLoading || voice.status === 'processing'}
+                  placeholder={voice.status === 'listening' ? 'Listening…' : 'Ask something...'}
                   className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                />
+                <VoiceButton
+                  status={voice.status}
+                  disabled={!voice.isSupported && voice.status !== 'speaking'}
+                  onClick={() => {
+                    if (!voice.isSupported) {
+                      showToast('This browser does not support speech recognition.');
+                      return;
+                    }
+                    voice.toggleListening();
+                  }}
                 />
                 <button
                   onClick={handleSend}
-                  disabled={isLoading || !input.trim()}
+                  disabled={isLoading || voice.status === 'processing' || !input.trim()}
                   className="flex h-8 w-8 items-center flex-shrink-0 justify-center rounded-full bg-teal-500 text-white transition-transform disabled:opacity-50 hover:bg-teal-600 active:scale-95"
                   aria-label="Send message"
                 >
