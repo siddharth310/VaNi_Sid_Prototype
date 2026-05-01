@@ -10,7 +10,7 @@ import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
 import { loadConfig } from './config.js';
 import { createRedisClient } from './lib/redis.js';
-import { registerAgentRoutes } from './routes/agents.route.js';
+import { notifyAgentCatalogRefresh, registerAgentRoutes } from './routes/agents.route.js';
 import { registerSessionRoutes } from './routes/sessions.route.js';
 import { registerStudioRoutes } from './routes/studio.route.js';
 import { registerTtsRoutes } from './routes/tts.route.js';
@@ -37,6 +37,13 @@ async function main(): Promise<void> {
   await registerVoiceRoutes(app, { cfg, redis, bus });
 
   await app.listen({ port: cfg.PORT, host: '0.0.0.0' });
+
+  try {
+    await notifyAgentCatalogRefresh(cfg);
+    app.log.info('Notified agent catalog refresh webhook on startup');
+  } catch (error) {
+    app.log.error({ err: error }, 'Failed to notify agent catalog refresh webhook on startup');
+  }
 }
 
 main().catch((err: unknown) => {

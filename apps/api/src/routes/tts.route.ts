@@ -94,6 +94,13 @@ export async function registerTtsRoutes(
             }
 
             const audioBuffer = Buffer.from(await response.arrayBuffer());
+
+            console.log('ElevenLabs TTS request succeeded:', {
+                status: response.status,
+                contentType: response.headers.get('content-type'),
+                audioSize: audioBuffer.length,
+            });
+
             return reply
                 .header('Content-Type', response.headers.get('content-type') ?? 'audio/mpeg')
                 .header('Cache-Control', 'no-store')

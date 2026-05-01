@@ -144,9 +144,9 @@ export function useVoiceAssistant({
     };
 
     const playAudioBlob = async (audioBlob: Blob): Promise<void> => {
-        if (!mountedRef.current) {
-            return;
-        }
+        // if (!mountedRef.current) {
+        //     return;
+        // }
 
         stopSpeaking();
         const url = URL.createObjectURL(audioBlob);
@@ -201,6 +201,12 @@ export function useVoiceAssistant({
                     text: responseText,
                     voiceId,
                 });
+
+                console.log('Received audio blob from speakText:', {
+                    size: audioBlob.size,
+                    type: audioBlob.type,
+                });
+
                 await playAudioBlob(audioBlob);
             } catch (error) {
                 stopSpeaking();

@@ -8,6 +8,7 @@ import {
   agentSpecSchema,
   validateAgentSpec,
 } from '../validation/agent-spec.schema.js';
+import { console } from 'node:inspector';
 
 type PersistedAgent = {
   id: string;
@@ -47,7 +48,7 @@ function serializeAgent(agent: PersistedAgent): Record<string, unknown> {
   };
 }
 
-async function notifyAgentCatalogRefresh(cfg: AppConfig): Promise<void> {
+export async function notifyAgentCatalogRefresh(cfg: AppConfig): Promise<void> {
   const response = await fetch(cfg.AGENT_CATALOG_REFRESH_URL, {
     method: 'POST'
   });
@@ -114,6 +115,9 @@ export async function registerAgentRoutes(
 
     try {
       await notifyAgentCatalogRefresh(cfg);
+
+      console.log(`Notified agent catalog refresh webhook for new agent ${agent.id}`);
+
     } catch (error) {
       req.log.error({ err: error, agentId: agent.id }, 'Failed to notify agent catalog refresh webhook');
     }
@@ -268,6 +272,9 @@ export async function registerAgentRoutes(
 
     try {
       await notifyAgentCatalogRefresh(cfg);
+
+      console.log(`Notified agent catalog refresh webhook for deleted agent ${req.params.id}`);
+
     } catch (error) {
       req.log.error({ err: error, agentId: req.params.id }, 'Failed to notify agent catalog refresh webhook');
     }

@@ -20,7 +20,7 @@ services:
     working_dir: /app
     command: sh -c "corepack enable && pnpm install && pnpm --filter @vhos/shared build && pnpm --filter @vhos/api exec prisma generate && pnpm --filter @vhos/api exec prisma migrate deploy && pnpm --filter @vhos/api dev"
     ports:
-      - '3002:3001'
+      - '3002:3002'
     env_file:
       - .env
     environment:
@@ -49,6 +49,7 @@ services:
       - .env
     environment:
       CI: 'true'
+      VITE_API_PROXY_TARGET: http://api:3002
     depends_on:
       - api
     volumes:
